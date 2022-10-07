@@ -22,7 +22,7 @@
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{6c9669ac-ef17-4b5e-8e46-6d6179c2d2e6}</ProjectGuid>
-    <RootNamespace>timertest</RootNamespace>
+    <RootNamespace>TickTock</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <ProjectName>TickTock</ProjectName>
   </PropertyGroup>

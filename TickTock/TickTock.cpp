@@ -25,7 +25,7 @@
 // Scanner config options.
 //
 bool bShowDebugOutput = false;
-std::string defaultSymbolPath = "C:\\SYMBOLS\\;";
+std::string defaultSymbolPath = "C:\\Symbols\\;";
 
 //
 // Run time linking for NtQueryInformationProcess.
@@ -42,12 +42,11 @@ pNtQueryInformationProcess myNtQueryInformationProcess;
 //
 // Required threadpool symbols.
 //
-using ptr = intptr_t;
-ptr pTppTimerpCleanupGroupMemberVFuncs = NULL;
-ptr pRtlpTpTimerFinalizationCallback = NULL;
-ptr pRtlpTpTimerCallback = NULL;
-ptr pTppTimerpTaskVFuncs = NULL;
-ptr pRtlCreateTimer = NULL;
+using myPtr = intptr_t;
+myPtr pTppTimerpCleanupGroupMemberVFuncs = NULL;
+myPtr pRtlpTpTimerFinalizationCallback = NULL;
+myPtr pRtlpTpTimerCallback = NULL;
+myPtr pTppTimerpTaskVFuncs = NULL;
 
 //
 // Threadpool heap allocation constants.
@@ -79,23 +78,25 @@ void readProcessMemory(HANDLE hProcess, PVOID targetAddress, SIZE_T elementsToRe
 //
 // Takes a symbol name and finds its address.
 //
-NTSTATUS ResolveSymbolFromName(HANDLE hProcess, PCSTR symbolName, ptr &address)
+// https://learn.microsoft.com/en-us/windows/win32/debug/retrieving-symbol-information-by-name
+NTSTATUS ResolveSymbolFromName(HANDLE hProcess, PCSTR symbolName, myPtr &address)
 {
     NTSTATUS status = STATUS_SUCCESS;
 
-    // [0] Prepare buffer for SYMBOL_INFO
+    // [0] Prepare buffer for SYMBOL_INFO.
     ULONG64 buffer[(sizeof(SYMBOL_INFO) +
         MAX_SYM_NAME * sizeof(TCHAR) +
         sizeof(ULONG64) - 1) /
         sizeof(ULONG64)];
     PSYMBOL_INFO pSymbol = (PSYMBOL_INFO)buffer;
+
     pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
     pSymbol->MaxNameLen = MAX_SYM_NAME;
 
-    // [1] Resolve symbol name
+    // [1] Resolve symbol name.
     if (!SymFromName(hProcess, symbolName, pSymbol))
     {
-        std::cout << "[-] SymFromName returned an error: " << GetLastError() << "for symbol name: " << symbolName << "\n";
+        std::cout << "[-] SymFromName returned an error: " << GetLastError() << " for symbol name: " << symbolName << "\n";
         status = STATUS_ASSERTION_FAILURE;
         goto Cleanup;
     }
@@ -108,17 +109,19 @@ Cleanup:
 //
 // Takes an address and resolves its corresponding symbol.
 //
-NTSTATUS ResolveSymbolFromAddress(HANDLE hProcess, ptr targetAddress, std::string &symbol)
+// https://learn.microsoft.com/en-us/windows/win32/debug/retrieving-symbol-information-by-address
+NTSTATUS ResolveSymbolFromAddress(HANDLE hProcess, myPtr targetAddress, std::string &symbol)
 {
     NTSTATUS status = STATUS_SUCCESS;
 
-    // [0] Prepare buffer for SYMBOL_INFO
+    // [0] Prepare buffer for SYMBOL_INFO.
     char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
     PSYMBOL_INFO pSymbol = (PSYMBOL_INFO)buffer;
+
     pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
     pSymbol->MaxNameLen = MAX_SYM_NAME;
 
-    // [1] Resolve address
+    // [1] Resolve address.
     if (!SymFromAddr(hProcess, targetAddress, NULL, pSymbol))
     {
         printf("[-] Failed to resolve callback function - SymFromAddr returned error : %d\n", GetLastError());
@@ -138,7 +141,7 @@ NTSTATUS InitialiseScanner()
 {
     NTSTATUS status = STATUS_SUCCESS;
 
-    // [1] Initialise symbols
+    // [1] Initialise symbols.
     if (!SymInitialize(GetCurrentProcess(), defaultSymbolPath.c_str(), TRUE))
     {
         std::cout << "[!] SymInitialze returned an error: " << GetLastError() << "\n";
@@ -146,38 +149,37 @@ NTSTATUS InitialiseScanner()
         goto Cleanup;
     }
 
-    // [2] Resolve required thread pool symbols
+    // [2] Resolve required thread pool symbols.
     if (!NT_SUCCESS(ResolveSymbolFromName(GetCurrentProcess(), "ntdll!TppTimerpCleanupGroupMemberVFuncs", pTppTimerpCleanupGroupMemberVFuncs)))
     {
-        std::cout << "[!] Failed to resolve required threadpool symbols\n";
+        std::cout << "[!] Failed to resolve required threadpool symbols; ensure symbols are correctly configured or try reloading symbols in windbg via .reload\n";
         status = STATUS_ASSERTION_FAILURE;
         goto Cleanup;
     }
 
     if (!NT_SUCCESS(ResolveSymbolFromName(GetCurrentProcess(), "ntdll!RtlpTpTimerFinalizationCallback", pRtlpTpTimerFinalizationCallback)))
     {
-        std::cout << "[!] Failed to resolve required threadpool symbols\n";
+        std::cout << "[!] Failed to resolve required threadpool symbols; ensure symbols are correctly configured or try reloading symbols in windbg via .reload\n";
         status = STATUS_ASSERTION_FAILURE;
         goto Cleanup;
     }
 
     if (!NT_SUCCESS(ResolveSymbolFromName(GetCurrentProcess(), "ntdll!RtlpTpTimerCallback", pRtlpTpTimerCallback)))
     {
-        std::cout << "[!] Failed to resolve required threadpool symbols\n";
+        std::cout << "[!] Failed to resolve required threadpool symbols; ensure symbols are correctly configured or try reloading symbols in windbg via .reload\n";
         status = STATUS_ASSERTION_FAILURE;
         goto Cleanup;
     }
 
     if (!NT_SUCCESS(ResolveSymbolFromName(GetCurrentProcess(), "ntdll!TppTimerpTaskVFuncs", pTppTimerpTaskVFuncs)))
     {
-        std::cout << "[!] Failed to resolve required threadpool symbols\n";
+        std::cout << "[!] Failed to resolve required threadpool symbols; ensure symbols are correctly configured or try reloading symbols in windbg via .reload\n";
         status = STATUS_ASSERTION_FAILURE;
         goto Cleanup;
     }
 
-    // [3] Lastly, resolve NtQueryInformationProcess
-    myNtQueryInformationProcess = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandle(L"ntdll.dll"),
-        "NtQueryInformationProcess");
+    // [3] Lastly, resolve NtQueryInformationProcess.
+    myNtQueryInformationProcess = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "NtQueryInformationProcess");
     if (NULL == myNtQueryInformationProcess)
     {
         std::cout << "[!] Failed to resolve NtQueryInformationProcess\n";
@@ -186,6 +188,7 @@ NTSTATUS InitialiseScanner()
     }
 
 Cleanup:
+    SymCleanup(GetCurrentProcess());
     return status;
 }
 
@@ -202,14 +205,14 @@ NTSTATUS FindProcessHeaps(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION>
     PVOID pebHeapEntry = 0;
     uint32_t numberOfHeaps = 0;
 
-    // [0] Sanity check handle
+    // [0] Sanity check handle.
     if (hProcess == INVALID_HANDLE_VALUE)
     {
         status = STATUS_ASSERTION_FAILURE;
         goto Cleanup;
     }
 
-    // [1] Locate remote PEB and read it into memory
+    // [1] Locate remote PEB and read it into memory.
     status = myNtQueryInformationProcess(hProcess, ProcessBasicInformation, &ProcessInformation, sizeof(ProcessInformation), NULL);
     if (status != 0)
     {
@@ -218,7 +221,7 @@ NTSTATUS FindProcessHeaps(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION>
     }
     peb = readProcessMemory<PEB>(hProcess, ProcessInformation.PebBaseAddress);
 
-    // [2] From the peb, retrieve the number of heaps and pointer to the process heaps
+    // [2] From the peb, retrieve the number of heaps and pointer to the process heaps.
     // + 0x0e8 NumberOfHeaps    : 3
     // + 0x0ec MaximumNumberOfHeaps : 0x10
     // + 0x0f0 ProcessHeaps : 0x00007ffe`445b9d40  -> 0x00000196`26510000 Void
@@ -249,7 +252,7 @@ Cleanup:
 //
 // Converts an intptr to vector of bytes.
 //
-void IntToVectorOfBytes(ptr originalValue, std::vector<uint8_t> &byteVector)
+void IntToVectorOfBytes(myPtr originalValue, std::vector<uint8_t> &byteVector)
 {
     byteVector.push_back(originalValue & 0xFF);
     byteVector.push_back((originalValue >> 8) & 0xFF);
@@ -284,10 +287,9 @@ NTSTATUS GetModuleBaseNameWrapper(HANDLE hProcess, PVOID targetAddress, std::str
 }
 
 //
-// Takes an address and resolves its corresponding symbol
-// via performing manual resolution.
+// Takes an address and performs best effort symbol resolution (i.e., to offset level winlogon+0x63590).
 //
-NTSTATUS GetBasicSymbolFromAddress(HANDLE hProcess, ptr targetAddress, std::string &symbol)
+NTSTATUS GetBasicSymbolFromAddress(HANDLE hProcess, myPtr targetAddress, std::string &symbol)
 {
     NTSTATUS status = STATUS_SUCCESS;
     MEMORY_BASIC_INFORMATION mbi = {};
@@ -315,7 +317,7 @@ NTSTATUS GetBasicSymbolFromAddress(HANDLE hProcess, ptr targetAddress, std::stri
     }
 
     // [3] Calculate offset from allocation base and return as basemodule + offset (e.g. winlogon+0x63590).
-    symbol = moduleName + "+0x" + std::format("{:x}", (targetAddress - (ptr)mbi.AllocationBase));
+    symbol = moduleName + "+0x" + std::format("{:x}", (targetAddress - (myPtr)mbi.AllocationBase));
 
 Cleanup:
     return status;
@@ -325,7 +327,7 @@ Cleanup:
 // Rough heuristic to sanity check whether a timer callback ptr looks valid.
 //
 // https://www.unknowncheats.me/forum/c-and-c-/304873-checking-valid-pointer.html
-bool IsInvalidPtr(intptr_t ptr)
+bool IsInvalidPtr(myPtr targetAddress)
 {
     static SYSTEM_INFO si = {};
     if (nullptr == si.lpMinimumApplicationAddress)
@@ -333,15 +335,15 @@ bool IsInvalidPtr(intptr_t ptr)
         GetSystemInfo(&si);
     }
 
-    return ((ptr < (intptr_t)si.lpMinimumApplicationAddress || ptr > (intptr_t)si.lpMaximumApplicationAddress));
+    return ((targetAddress < (myPtr)si.lpMinimumApplicationAddress || targetAddress > (myPtr)si.lpMaximumApplicationAddress));
 }
 
 //
-// Scans a remote processes heap memory in order to find timer-queue timers.
+// Scans a remote process's heap memory in order to find timer-queue timers.
 //
 // RtlCreateTimer creates two heap allocations:
-//   1) One itself via directly calling RtlAllocateHeap
-//   2) One indirectly via calling TpAllocTimer
+//   1) One itself via directly calling RtlAllocateHeap.
+//   2) One indirectly via calling TpAllocTimer.
 // This function looks for a common pattern of pointers that are set on the
 // *second* block of memory (via TpAllocTimer). This block of memory also contains a ptr to
 // the first allocation, which contains the actual callback and parameter passed
@@ -382,7 +384,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
             // intptrs so we can quickly check other offsets for expected ptr values.
 
             // [3.1] First work out current index and convert to ptr.
-            PINT_PTR vectorStart = (PINT_PTR)heapMemory.data() + ((heapMemoryIt - heapMemory.begin()) / sizeof(intptr_t));
+            myPtr* vectorStart = (myPtr*)heapMemory.data() + ((heapMemoryIt - heapMemory.begin()) / sizeof(myPtr));
 
             // [3.2] Advance iterator so we keep scanning remaining
             // heap memory if we fail to find a timer.
@@ -390,17 +392,17 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
 
             // [3.3] Create new vector of intptrs from current index.
             // Sanity check our end ptr doesn't overrun vector data.
-            PINT_PTR vectorEnd = vectorStart + tpAllocTimerHeapAllocMinSizeToRead;
-            PINT_PTR upperBound = (PINT_PTR)&(*(heapMemory.end() - sizeof(intptr_t)));
+            myPtr* vectorEnd = vectorStart + tpAllocTimerHeapAllocMinSizeToRead;
+            myPtr* upperBound = (myPtr*)&(*(heapMemory.end() - sizeof(myPtr)));
             if (vectorEnd > upperBound)
             {
                 continue;
             }
-            std::vector<ptr> tpAllocTimerHeapAllocData(vectorStart, vectorEnd);
+            std::vector<myPtr> tpAllocTimerHeapAllocData(vectorStart, vectorEnd);
 
             // If we have a timer, heap memory allocated by TpAllocTimer
             // will look like this:
-            // 0:000 > dps 0000021c4e003610 L 170
+            // 0:000 > dps 0000021c4e003610 L170
             // 0000021c`4e003610  00000000`00000001 (Bool indicicating if it has yet to fire?)
             // 0000021c`4e003618  00007ffe`4456c1e8 ntdll!TppTimerpCleanupGroupMemberVFuncs  <-- Current index
             // 0000021c`4e003620  00000000`00000000
@@ -412,7 +414,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
             // 0000021c`4e003650  00000000`00000000
             // 0000021c`4e003658  00000000`00000000
             // 0000021c`4e003660  00007ffe`444c60a0 ntdll!RtlpTpTimerCallback [5]
-            // 0000021c`4e003668  0000021c`4dfff290 Ptr to first allocation by RtlCreateTimer which contains the target callback and parameter. [6]
+            // 0000021c`4e003668  0000021c`4dfff290 ptr to first allocation by RtlCreateTimer which contains the target callback and parameter. [6]
             // 0000021c`4e003670  00000000`00000000
             // 0000021c`4e003678  00000000`00000000
             // 0000021c`4e003680  00000000`00000000
@@ -451,7 +453,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
             // heap allocation performed by RtlCreateTimer. This contains the
             // target callback and parameter.
             std::advance(tpAllocTimerHeapAllocDataIt, 1);
-            auto RtlCreateTimerHeapDataPtr = *tpAllocTimerHeapAllocDataIt;
+            auto rtlCreateTimerHeapDataPtr = *tpAllocTimerHeapAllocDataIt;
 
             // [7] Look ahead for pointer to ntdll!TppTimerpTaskVFuncs.
             std::advance(tpAllocTimerHeapAllocDataIt, 14);
@@ -460,7 +462,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
                 continue;
             }
 
-            // For debugging purposes. If you want very verbose output move this up to L374
+            // For debugging purposes. If you want very verbose output move this up to L378
             // to show heap output every time we find a ptr to ntdll!TppTimerpCleanupGroupMemberVFuncs.
             if (bShowDebugOutput)
             {
@@ -476,11 +478,11 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
                 }
             }
 
-            // [8] At this point it is *highly* likely we have identified a timer-queue timer struct.
+            // [8] At this point it is *highly* likely we have identified a timer-queue timer.
             // The ptr captured in [6] points to the initial heap allocation performed
             // by RtlCreateTimer, which will store the timer callback and argument.
-            std::vector<ptr> rtlCreateTimerHeapAllocData(rtlCreateTimerHeapAllocMinSizeToRead);
-            readProcessMemory<ptr>(hProcess, (PVOID)RtlCreateTimerHeapDataPtr, rtlCreateTimerHeapAllocMinSizeToRead, rtlCreateTimerHeapAllocData);
+            std::vector<myPtr> rtlCreateTimerHeapAllocData(rtlCreateTimerHeapAllocMinSizeToRead);
+            readProcessMemory<myPtr>(hProcess, (PVOID)rtlCreateTimerHeapDataPtr, rtlCreateTimerHeapAllocMinSizeToRead, rtlCreateTimerHeapAllocData);
 
             // If we have a timer, heap memory will look like this:
             // 0:000 > dps @rdi
@@ -535,7 +537,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
             // NB These are rough heuristics and are bound to fail in some use cases,
             // especially as heap memory changes and timers are deallocated.
             {
-                // [10.1] Sanity check timer callback actually points to something in memory
+                // [10.1] Sanity check timer callback actually points to something in memory.
                 if (IsInvalidPtr(timerCallback))
                 {
                     if (bShowDebugOutput)
@@ -563,7 +565,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
             // [11] If we got this far we have a timer-queue timer so print out results.
             if (printDelimiter)
             {
-                std::cout << "==========================================================================\n";
+                std::cout << "========================================================================================================\n";
                 printDelimiter = false;
             }
             std::cout << "[+] Found timer-queue timer:\n";
@@ -584,7 +586,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
                 {
                     std::cout << "[+] Timer callback ptr (manually) resolved symbol: " << std::hex << timerCallbackSymbol << "\n";
                 }
-                std::cout << "==========================================================================\n";
+                std::cout << "========================================================================================================\n";
                 continue;
             }
             std::cout << "[+] Timer callback ptr resolved symbol: " << std::hex << timerCallbackSymbol << "\n";
@@ -593,7 +595,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
             // a CONTEXT structure, so print out it's contents here.
             if ("NtContinue" != timerCallbackSymbol)
             {
-                std::cout << "==========================================================================\n";
+                std::cout << "========================================================================================================\n";
                 continue;
             }
             CONTEXT ctx = {};
@@ -614,22 +616,20 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
 
                     // [13.3] If Rip is pointing at VirtualProtect then print
                     // out information about target memory region.
-                    if ("VirtualProtectEx" == ctxRipSymbol || "VirtualProtect" == ctxRipSymbol)
+                    if ("VirtualProtect" == ctxRipSymbol || "VirtualProtectStub" == ctxRipSymbol)
                     {
                         MEMORY_BASIC_INFORMATION mbi = {};
-                        DWORD64 targetAddr = NULL;
                         std::string moduleName;
-                        ("VirtualProtect" == ctxRipSymbol) ? targetAddr = ctx.Rcx : targetAddr = ctx.Rdx;
-                        if (VirtualQueryEx(hProcess, (PVOID)targetAddr, &mbi, sizeof(mbi)))
+                        if (VirtualQueryEx(hProcess, (PVOID)ctx.Rcx, &mbi, sizeof(mbi)))
                         {
-                            std::cout << "        [+] Memory info for target region of VirtualProtect(Ex) call:\n";
+                            std::cout << "        [+] Memory info for target region of VirtualProtect call:\n";
                             std::cout << "        [+] BaseAddress: 0x" << std::hex << mbi.BaseAddress << "\n";
                             std::cout << "        [+] AllocationBase: 0x" << std::hex << mbi.AllocationBase << "\n";
                             std::cout << "        [+] State: 0x" << std::hex << mbi.State << "\n";
                             std::cout << "        [+] Protect: 0x" << std::hex << mbi.Protect << "\n";
                             std::cout << "        [+] Type: 0x" << std::hex << mbi.Type << "\n";
 
-                            // [13.4] Attempt to resolve module name
+                            // [13.4] Attempt to resolve module name.
                             if (NT_SUCCESS(GetModuleBaseNameWrapper(hProcess, mbi.AllocationBase, moduleName)))
                             {
                                 std::cout << "        [+] Module base name: " << moduleName.c_str() << "\n";
@@ -642,7 +642,7 @@ void ScanHeapMemory(HANDLE hProcess, std::vector<MEMORY_BASIC_INFORMATION> &proc
                 std::cout << "    [+] ctx.R8: 0x" << std::hex << ctx.R8 << "\n";
                 std::cout << "    [+] ctx.R9: 0x" << std::hex << ctx.R9 << "\n";
             }
-        std::cout << "==========================================================================\n";
+        std::cout << "========================================================================================================\n";
         }
     }
     return;
@@ -682,7 +682,8 @@ NTSTATUS ScanForTimerQueueTimers(DWORD pid)
     if (!SymInitialize(hProcess, defaultSymbolPath.c_str(), TRUE))
     {
         std::cout << "[-] SymInitialize returned error: " << GetLastError() << "\n";
-        return -1;
+        status = STATUS_ASSERTION_FAILURE;
+        goto Cleanup;
     }
 
     // [4] Locate process heaps for target process.
@@ -697,7 +698,7 @@ NTSTATUS ScanForTimerQueueTimers(DWORD pid)
     ScanHeapMemory(hProcess, processHeapVector);
 
 Cleanup:
-    CloseHandle(hProcess);
+    SymCleanup(hProcess);
     return status;
 }
 
@@ -738,7 +739,7 @@ NTSTATUS ScanProcesses()
             continue;
         }
 
-        // [3] Scan for timer-queue timers
+        // [3] Scan for timer-queue timers.
         std::wcout << "[+] Scanning process: " << processEntry32.szExeFile << ", pid: " << processEntry32.th32ProcessID << "\n";
         (void)ScanForTimerQueueTimers(processEntry32.th32ProcessID);
     } while (Process32Next(hProcessSnapshot, &processEntry32));
@@ -861,8 +862,13 @@ int main(int argc, char* argv[])
                               Timer-Queue Timer Enumerator            William Burgess @joehowwolf
     )" << '\n';
 
-    std::cout << "*** WARNING: This tool requires symbols to be correctly configured and expects a default symbol path of C:\\Symbols. ***\n";
-    std::cout << "*** See https://stackoverflow.com/questions/30019889/how-to-set-up-symbols-in-windbg for instructions on how to do this with windbg. ***\n\n";
+    std::cout << "*** WARNING: This tool requires symbols to be correctly configured.***\n";
+    std::cout << "*** To do this you will need to install the Debugging Tools for Windows (WinDbg).***\n";
+    std::cout << "*** Once you have done this:\n";
+    std::cout << "*** 1) Create a folder called C:\\Symbols\n";
+    std::cout << "*** 2) In windbg, attach to an arbitrary process and run: .symfix+ c:\\symbols\n";
+    std::cout << "***                                                       .reload\n";
+    std::cout << "*** See https://stackoverflow.com/questions/30019889/how-to-set-up-symbols-in-windbg for further assistance. ***\n\n";
 
     NTSTATUS status = STATUS_SUCCESS;
 
@@ -874,7 +880,7 @@ int main(int argc, char* argv[])
     }
 
     // [1] Configure symbol options.
-    (void)SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEBUG | SYMOPT_DEFERRED_LOADS);
+    (void)SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
 
     // [2] Initialise required symbols. We need to hunt for pointers
     // in heap memory so bail if we can't resolve them.
